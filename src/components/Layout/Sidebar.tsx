@@ -1,4 +1,4 @@
-import { Home, Wrench, DollarSign, CreditCard, Bell, Megaphone, LogOut } from 'lucide-react';
+import { Home, Wrench, DollarSign, CreditCard, Bell, Megaphone, LogOut, BarChart3, FileText } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface SidebarProps {
@@ -14,6 +14,8 @@ export const Sidebar = ({ activeView, onViewChange }: SidebarProps) => {
     { id: 'maintenance', label: 'Maintenance', icon: Wrench, roles: ['admin', 'resident'] },
     { id: 'transactions', label: 'Transactions', icon: DollarSign, roles: ['admin'] },
     { id: 'payments', label: 'Payments', icon: CreditCard, roles: ['admin', 'resident'] },
+    { id: 'reports', label: 'Reports', icon: BarChart3, roles: ['admin'] },
+    { id: 'statements', label: 'Statements', icon: FileText, roles: ['admin'] },
     { id: 'announcements', label: 'Announcements', icon: Megaphone, roles: ['admin', 'resident'] },
     { id: 'notifications', label: 'Notifications', icon: Bell, roles: ['admin', 'resident'] },
   ];
