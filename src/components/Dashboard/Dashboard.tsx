@@ -13,7 +13,7 @@ interface DashboardStats {
 }
 
 export const Dashboard = () => {
-  const { isAdmin, profile } = useAuth();
+  const { profile } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     totalIncome: 0,
     totalExpenses: 0,
@@ -28,7 +28,7 @@ export const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardData();
-  }, [isAdmin]);
+  }, []); // Remove isAdmin dependency so Dashboard loads for all users
 
   const loadDashboardData = async () => {
     try {
@@ -97,7 +97,7 @@ export const Dashboard = () => {
           Welcome back, {profile?.full_name}
         </h1>
         <p className="text-slate-600 mt-1">
-          {isAdmin ? 'Admin Dashboard' : 'Resident Portal'}
+          Dashboard
         </p>
       </div>
 
@@ -147,36 +147,33 @@ export const Dashboard = () => {
           </div>
         </div>
 
-        {isAdmin && (
-          <>
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-amber-100 p-3 rounded-lg">
-                  <AlertCircle className="h-6 w-6 text-amber-600" />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm text-slate-600">Pending Payments</p>
-                <p className="text-3xl font-bold text-slate-900">
-                  ${stats.pendingPayments.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
+        {/* Always show these cards, regardless of role */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="bg-amber-100 p-3 rounded-lg">
+              <AlertCircle className="h-6 w-6 text-amber-600" />
             </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-slate-600">Pending Payments</p>
+            <p className="text-3xl font-bold text-slate-900">
+              ${stats.pendingPayments.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+        </div>
 
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-blue-100 p-3 rounded-lg">
-                  <Wrench className="h-6 w-6 text-blue-600" />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm text-slate-600">Active Maintenance</p>
-                <p className="text-3xl font-bold text-slate-900">{stats.activeMaintenance}</p>
-                <p className="text-xs text-slate-500">{stats.upcomingMaintenance} pending</p>
-              </div>
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="bg-blue-100 p-3 rounded-lg">
+              <Wrench className="h-6 w-6 text-blue-600" />
             </div>
-          </>
-        )}
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-slate-600">Active Maintenance</p>
+            <p className="text-3xl font-bold text-slate-900">{stats.activeMaintenance}</p>
+            <p className="text-xs text-slate-500">{stats.upcomingMaintenance} pending</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
