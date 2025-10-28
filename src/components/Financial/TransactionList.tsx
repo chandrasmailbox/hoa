@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DollarSign, Plus, TrendingUp, TrendingDown, Calendar } from 'lucide-react';
+import { DollarSign, Plus, TrendingUp, TrendingDown, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { supabase, Transaction } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -8,6 +8,8 @@ export const TransactionList = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
 
   useEffect(() => {
@@ -28,6 +30,32 @@ export const TransactionList = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEdit = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      setTransactions(transactions.filter(t => t.id !== id));
+      setDeleteConfirmId(null);
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+    }
+  };
+
+  const handleFormClose = () => {
+    setShowForm(false);
+    setEditingTransaction(null);
   };
 
   const filteredTransactions = transactions.filter(
@@ -102,7 +130,13 @@ export const TransactionList = () => {
         </div>
       </div>
 
-      {showForm && <TransactionForm onClose={() => setShowForm(false)} onSuccess={loadTransactions} />}
+      {showForm && (
+        <TransactionForm 
+          onClose={handleFormClose} 
+          onSuccess={loadTransactions} 
+          editingTransaction={editingTransaction}
+        />
+      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200">
         <div className="p-4 border-b border-slate-200">
@@ -148,42 +182,88 @@ export const TransactionList = () => {
             </div>
           ) : (
             filteredTransactions.map((transaction) => (
-              <div key={transaction.id} className="p-4 hover:bg-slate-50 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        transaction.type === 'income'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-red-100 text-red-700'
+              <div key={transaction.id}>
+                <div className="p-4 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          transaction.type === 'income'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {transaction.type}
+                        </span>
+                        <span className="text-sm font-medium text-slate-900">{transaction.category}</span>
+                      </div>
+                      {transaction.description && (
+                        <p className="text-slate-600 text-sm mb-2">{transaction.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 text-xs text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(transaction.transaction_date).toLocaleDateString()}
+                        </span>
+                        {transaction.payment_method && (
+                          <span>{transaction.payment_method.replace('_', ' ')}</span>
+                        )}
+                        {transaction.reference_number && (
+                          <span>Ref: {transaction.reference_number}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className={`text-lg font-bold ${
+                        transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600'
                       }`}>
-                        {transaction.type}
-                      </span>
-                      <span className="text-sm font-medium text-slate-900">{transaction.category}</span>
-                    </div>
-                    {transaction.description && (
-                      <p className="text-slate-600 text-sm mb-2">{transaction.description}</p>
-                    )}
-                    <div className="flex items-center gap-3 text-xs text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(transaction.transaction_date).toLocaleDateString()}
-                      </span>
-                      {transaction.payment_method && (
-                        <span>{transaction.payment_method.replace('_', ' ')}</span>
+                        {transaction.type === 'income' ? '+' : '-'}$
+                        {transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEdit(transaction)}
+                            className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit transaction"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(transaction.id)}
+                            className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete transaction"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       )}
-                      {transaction.reference_number && (
-                        <span>Ref: {transaction.reference_number}</span>
-                      )}
                     </div>
-                  </div>
-                  <div className={`text-lg font-bold ${
-                    transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600'
-                  }`}>
-                    {transaction.type === 'income' ? '+' : '-'}$
-                    {transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
+
+                {deleteConfirmId === transaction.id && (
+                  <div className="px-4 pb-4">
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-800 mb-3">
+                        Are you sure you want to delete this transaction? This action cannot be undone.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleDelete(transaction.id)}
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+                        >
+                          Confirm Delete
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -193,16 +273,24 @@ export const TransactionList = () => {
   );
 };
 
-const TransactionForm = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) => {
+const TransactionForm = ({ 
+  onClose, 
+  onSuccess,
+  editingTransaction 
+}: { 
+  onClose: () => void; 
+  onSuccess: () => void;
+  editingTransaction?: Transaction | null;
+}) => {
   const { user } = useAuth();
   const [formData, setFormData] = useState({
-    type: 'income',
-    category: '',
-    amount: '',
-    description: '',
-    transaction_date: new Date().toISOString().split('T')[0],
-    payment_method: 'bank_transfer',
-    reference_number: '',
+    type: editingTransaction?.type || 'income',
+    category: editingTransaction?.category || '',
+    amount: editingTransaction?.amount?.toString() || '',
+    description: editingTransaction?.description || '',
+    transaction_date: editingTransaction?.transaction_date || new Date().toISOString().split('T')[0],
+    payment_method: editingTransaction?.payment_method || 'bank_transfer',
+    reference_number: editingTransaction?.reference_number || '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -216,18 +304,34 @@ const TransactionForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
     setLoading(true);
 
     try {
-      const { error } = await supabase.from('transactions').insert({
+      const payload = {
         ...formData,
         amount: parseFloat(formData.amount),
         reference_number: formData.reference_number || null,
         created_by: user?.id,
-      });
+      };
 
-      if (error) throw error;
+      if (editingTransaction) {
+        // Update existing transaction
+        const { error } = await supabase
+          .from('transactions')
+          .update(payload)
+          .eq('id', editingTransaction.id);
+
+        if (error) throw error;
+      } else {
+        // Create new transaction
+        const { error } = await supabase
+          .from('transactions')
+          .insert(payload);
+
+        if (error) throw error;
+      }
+
       onSuccess();
       onClose();
     } catch (error) {
-      console.error('Error creating transaction:', error);
+      console.error('Error saving transaction:', error);
     } finally {
       setLoading(false);
     }
@@ -236,7 +340,9 @@ const TransactionForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-2xl font-bold text-slate-900 mb-6">Add Transaction</h3>
+        <h3 className="text-2xl font-bold text-slate-900 mb-6">
+          {editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
+        </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -345,7 +451,7 @@ const TransactionForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
               disabled={loading}
               className="flex-1 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
-              {loading ? 'Adding...' : 'Add Transaction'}
+              {loading ? (editingTransaction ? 'Updating...' : 'Adding...') : (editingTransaction ? 'Update Transaction' : 'Add Transaction')}
             </button>
           </div>
         </form>

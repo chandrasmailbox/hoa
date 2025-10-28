@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wrench, Plus, Calendar, DollarSign, AlertCircle } from 'lucide-react';
+import { Wrench, Plus, Calendar, DollarSign, AlertCircle, Pencil, Trash2 } from 'lucide-react';
 import { supabase, MaintenanceRequest } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -22,6 +22,8 @@ export const MaintenanceList = () => {
   const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<MaintenanceRequest | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     loadRequests();
@@ -41,6 +43,32 @@ export const MaintenanceList = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEdit = (request: MaintenanceRequest) => {
+    setEditingRequest(request);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('maintenance_requests')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      setRequests(requests.filter(req => req.id !== id));
+      setDeleteConfirmId(null);
+    } catch (error) {
+      console.error('Error deleting maintenance request:', error);
+    }
+  };
+
+  const handleFormClose = () => {
+    setShowForm(false);
+    setEditingRequest(null);
   };
 
   if (loading) {
@@ -69,7 +97,13 @@ export const MaintenanceList = () => {
         )}
       </div>
 
-      {showForm && <MaintenanceForm onClose={() => setShowForm(false)} onSuccess={loadRequests} />}
+      {showForm && (
+        <MaintenanceForm 
+          onClose={handleFormClose} 
+          onSuccess={loadRequests} 
+          editingRequest={editingRequest}
+        />
+      )}
 
       <div className="grid gap-4">
         {requests.length === 0 ? (
@@ -118,7 +152,48 @@ export const MaintenanceList = () => {
                     </div>
                   )}
                 </div>
+
+                {isAdmin && (
+                  <div className="flex items-center gap-2 ml-4">
+                    <button
+                      onClick={() => handleEdit(request)}
+                      className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit request"
+                    >
+                      <Pencil className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(request.id)}
+                      className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete request"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {deleteConfirmId === request.id && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800 mb-3">
+                    Are you sure you want to delete this maintenance request? This action cannot be undone.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleDelete(request.id)}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+                    >
+                      Confirm Delete
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(null)}
+                      className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))
         )}
@@ -127,17 +202,25 @@ export const MaintenanceList = () => {
   );
 };
 
-const MaintenanceForm = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) => {
+const MaintenanceForm = ({ 
+  onClose, 
+  onSuccess, 
+  editingRequest 
+}: { 
+  onClose: () => void; 
+  onSuccess: () => void;
+  editingRequest?: MaintenanceRequest | null;
+}) => {
   const { user } = useAuth();
   const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: 'repairs',
-    priority: 'medium',
-    status: 'pending',
-    estimated_cost: '',
-    scheduled_date: '',
-    assigned_vendor: '',
+    title: editingRequest?.title || '',
+    description: editingRequest?.description || '',
+    category: editingRequest?.category || 'repairs',
+    priority: editingRequest?.priority || 'medium',
+    status: editingRequest?.status || 'pending',
+    estimated_cost: editingRequest?.estimated_cost?.toString() || '',
+    scheduled_date: editingRequest?.scheduled_date || '',
+    assigned_vendor: editingRequest?.assigned_vendor || '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -146,19 +229,35 @@ const MaintenanceForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
     setLoading(true);
 
     try {
-      const { error } = await supabase.from('maintenance_requests').insert({
+      const payload = {
         ...formData,
         estimated_cost: formData.estimated_cost ? parseFloat(formData.estimated_cost) : null,
         scheduled_date: formData.scheduled_date || null,
         assigned_vendor: formData.assigned_vendor || null,
         requested_by: user?.id,
-      });
+      };
 
-      if (error) throw error;
+      if (editingRequest) {
+        // Update existing request
+        const { error } = await supabase
+          .from('maintenance_requests')
+          .update(payload)
+          .eq('id', editingRequest.id);
+
+        if (error) throw error;
+      } else {
+        // Create new request
+        const { error } = await supabase
+          .from('maintenance_requests')
+          .insert(payload);
+
+        if (error) throw error;
+      }
+
       onSuccess();
       onClose();
     } catch (error) {
-      console.error('Error creating maintenance request:', error);
+      console.error('Error saving maintenance request:', error);
     } finally {
       setLoading(false);
     }
@@ -167,7 +266,9 @@ const MaintenanceForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-2xl font-bold text-slate-900 mb-6">New Maintenance Request</h3>
+        <h3 className="text-2xl font-bold text-slate-900 mb-6">
+          {editingRequest ? 'Edit Maintenance Request' : 'New Maintenance Request'}
+        </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Title</label>
@@ -225,6 +326,20 @@ const MaintenanceForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
 
           <div className="grid grid-cols-2 gap-4">
             <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
+              >
+                <option value="pending">Pending</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Estimated Cost</label>
               <input
                 type="number"
@@ -235,7 +350,9 @@ const MaintenanceForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
                 placeholder="0.00"
               />
             </div>
+          </div>
 
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Scheduled Date</label>
               <input
@@ -245,17 +362,17 @@ const MaintenanceForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
               />
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Assigned Vendor</label>
-            <input
-              type="text"
-              value={formData.assigned_vendor}
-              onChange={(e) => setFormData({ ...formData, assigned_vendor: e.target.value })}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
-              placeholder="Vendor name"
-            />
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Assigned Vendor</label>
+              <input
+                type="text"
+                value={formData.assigned_vendor}
+                onChange={(e) => setFormData({ ...formData, assigned_vendor: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
+                placeholder="Vendor name"
+              />
+            </div>
           </div>
 
           <div className="flex gap-3 pt-4">
@@ -271,7 +388,7 @@ const MaintenanceForm = ({ onClose, onSuccess }: { onClose: () => void; onSucces
               disabled={loading}
               className="flex-1 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
-              {loading ? 'Creating...' : 'Create Request'}
+              {loading ? (editingRequest ? 'Updating...' : 'Creating...') : (editingRequest ? 'Update Request' : 'Create Request')}
             </button>
           </div>
         </form>
