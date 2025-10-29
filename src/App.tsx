@@ -10,6 +10,7 @@ import { AnnouncementList } from './components/Announcements/AnnouncementList';
 import { NotificationCenter } from './components/Notifications/NotificationCenter';
 import { ReportsPage } from './components/Reports/ReportsPage';
 import { FinancialStatements } from './components/Reports/FinancialStatements';
+import { PropertiesList } from './components/Properties/PropertiesList';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -37,6 +38,8 @@ function AppContent() {
         return <TransactionList />;
       case 'payments':
         return <PaymentPortal />;
+      case 'properties':
+      return <PropertiesList />;
       case 'reports':
         return <ReportsPage />;
       case 'statements':
