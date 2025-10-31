@@ -18,7 +18,7 @@ const statusColors = {
 };
 
 export const MaintenanceList = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -30,11 +30,23 @@ export const MaintenanceList = () => {
   }, []);
 
   const loadRequests = async () => {
+    if (!user) {
+      setRequests([]);
+      setLoading(false);
+      return;
+    }
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('maintenance_requests')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // Admin sees all requests, user only their own
+      if (!isAdmin) {
+        query = query.eq('requested_by', user.id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setRequests(data || []);
@@ -52,13 +64,20 @@ export const MaintenanceList = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      const { error } = await supabase
+      // Always allow delete if user is admin or request belongs to user
+      let query = supabase
         .from('maintenance_requests')
         .delete()
         .eq('id', id);
 
+      if (!isAdmin) {
+        query = query.eq('requested_by', user?.id);
+      }
+
+      const { error } = await query;
+
       if (error) throw error;
-      
+
       setRequests(requests.filter(req => req.id !== id));
       setDeleteConfirmId(null);
     } catch (error) {
@@ -86,7 +105,7 @@ export const MaintenanceList = () => {
           <h2 className="text-2xl font-bold text-slate-900">Maintenance Requests</h2>
           <p className="text-slate-600 mt-1">Track and manage property maintenance</p>
         </div>
-        {isAdmin && (
+        {(isAdmin || user) && (
           <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors"
@@ -153,7 +172,8 @@ export const MaintenanceList = () => {
                   )}
                 </div>
 
-                {isAdmin && (
+                {/* Admin can edit/delete all, users only their own */}
+                {(isAdmin || (user && request.requested_by === user.id)) && (
                   <div className="flex items-center gap-2 ml-4">
                     <button
                       onClick={() => handleEdit(request)}
@@ -211,7 +231,7 @@ const MaintenanceForm = ({
   onSuccess: () => void;
   editingRequest?: MaintenanceRequest | null;
 }) => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [formData, setFormData] = useState({
     title: editingRequest?.title || '',
     description: editingRequest?.description || '',
@@ -231,20 +251,29 @@ const MaintenanceForm = ({
     try {
       const payload = {
         ...formData,
-        estimated_cost: formData.estimated_cost ? parseFloat(formData.estimated_cost) : null,
-        scheduled_date: formData.scheduled_date || null,
-        assigned_vendor: formData.assigned_vendor || null,
+        estimated_cost: isAdmin ? (formData.estimated_cost ? parseFloat(formData.estimated_cost) : null) : null,
+        scheduled_date: isAdmin ? (formData.scheduled_date || null) : null,
+        assigned_vendor: isAdmin ? (formData.assigned_vendor || null) : null,
         requested_by: user?.id,
+        status: isAdmin ? formData.status : 'pending', // always pending for normal users
       };
 
       if (editingRequest) {
-        // Update existing request
-        const { error } = await supabase
-          .from('maintenance_requests')
-          .update(payload)
-          .eq('id', editingRequest.id);
+        // Always allow update if user is admin or request belongs to user
+        if (isAdmin || (user?.id === editingRequest.requested_by)) {
+          let query = supabase
+            .from('maintenance_requests')
+            .update(payload)
+            .eq('id', editingRequest.id);
 
-        if (error) throw error;
+          if (!isAdmin) {
+            query = query.eq('requested_by', user?.id);
+          }
+          const { error } = await query;
+          if (error) throw error;
+        } else {
+          throw new Error('You do not have permission to update this request.');
+        }
       } else {
         // Create new request
         const { error } = await supabase
@@ -328,9 +357,10 @@ const MaintenanceForm = ({
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
               <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
+                value={isAdmin ? formData.status : 'pending'}
+                onChange={(e) => isAdmin && setFormData({ ...formData, status: e.target.value })}
+                className={`w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 ${isAdmin ? '' : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
+                disabled={!isAdmin}
               >
                 <option value="pending">Pending</option>
                 <option value="in_progress">In Progress</option>
@@ -339,40 +369,46 @@ const MaintenanceForm = ({
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Estimated Cost</label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.estimated_cost}
-                onChange={(e) => setFormData({ ...formData, estimated_cost: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
-                placeholder="0.00"
-              />
-            </div>
+            {isAdmin && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Estimated Cost</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.estimated_cost}
+                  onChange={(e) => setFormData({ ...formData, estimated_cost: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
+                  placeholder="0.00"
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Scheduled Date</label>
-              <input
-                type="date"
-                value={formData.scheduled_date}
-                onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
-              />
-            </div>
+            {isAdmin && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Scheduled Date</label>
+                <input
+                  type="date"
+                  value={formData.scheduled_date}
+                  onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
+                />
+              </div>
+            )}
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Assigned Vendor</label>
-              <input
-                type="text"
-                value={formData.assigned_vendor}
-                onChange={(e) => setFormData({ ...formData, assigned_vendor: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
-                placeholder="Vendor name"
-              />
-            </div>
+            {isAdmin && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Assigned Vendor</label>
+                <input
+                  type="text"
+                  value={formData.assigned_vendor}
+                  onChange={(e) => setFormData({ ...formData, assigned_vendor: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500"
+                  placeholder="Vendor name"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3 pt-4">
