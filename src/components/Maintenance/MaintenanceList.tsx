@@ -64,14 +64,14 @@ export const MaintenanceList = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      // Always allow delete if user is admin or request belongs to user
+      // Always allow delete if user is admin or request belongs to user AND status is pending
       let query = supabase
         .from('maintenance_requests')
         .delete()
         .eq('id', id);
 
       if (!isAdmin) {
-        query = query.eq('requested_by', user?.id);
+        query = query.eq('requested_by', user?.id).eq('status', 'pending');
       }
 
       const { error } = await query;
@@ -172,20 +172,22 @@ export const MaintenanceList = () => {
                   )}
                 </div>
 
-                {/* Admin can edit/delete all, users only their own */}
-                {(isAdmin || (user && request.requested_by === user.id)) && (
+                {/* Admin can edit/delete all, users only their own AND only if status is 'pending' */}
+                {(isAdmin || (user && request.requested_by === user.id && request.status === 'pending')) && (
                   <div className="flex items-center gap-2 ml-4">
                     <button
                       onClick={() => handleEdit(request)}
-                      className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      className={`p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors`}
                       title="Edit request"
+                      disabled={!isAdmin && request.status !== 'pending'}
                     >
                       <Pencil className="h-5 w-5" />
                     </button>
                     <button
                       onClick={() => setDeleteConfirmId(request.id)}
-                      className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className={`p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors`}
                       title="Delete request"
+                      disabled={!isAdmin && request.status !== 'pending'}
                     >
                       <Trash2 className="h-5 w-5" />
                     </button>
@@ -254,20 +256,24 @@ const MaintenanceForm = ({
         estimated_cost: isAdmin ? (formData.estimated_cost ? parseFloat(formData.estimated_cost) : null) : null,
         scheduled_date: isAdmin ? (formData.scheduled_date || null) : null,
         assigned_vendor: isAdmin ? (formData.assigned_vendor || null) : null,
-        requested_by: user?.id,
+        // Always keep requested_by as the original requester when editing
+        requested_by: editingRequest?.requested_by ?? user?.id,
         status: isAdmin ? formData.status : 'pending', // always pending for normal users
       };
 
       if (editingRequest) {
-        // Always allow update if user is admin or request belongs to user
-        if (isAdmin || (user?.id === editingRequest.requested_by)) {
+        // Only allow update if user is admin or request belongs to user AND status is pending
+        if (
+          isAdmin ||
+          (user?.id === editingRequest.requested_by && editingRequest.status === 'pending')
+        ) {
           let query = supabase
             .from('maintenance_requests')
             .update(payload)
             .eq('id', editingRequest.id);
 
           if (!isAdmin) {
-            query = query.eq('requested_by', user?.id);
+            query = query.eq('requested_by', user?.id).eq('status', 'pending');
           }
           const { error } = await query;
           if (error) throw error;
