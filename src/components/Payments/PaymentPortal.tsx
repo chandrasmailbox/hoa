@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { CreditCard, Calendar, CheckCircle, Clock, AlertTriangle, Plus, Search, Download, Building2 } from 'lucide-react';
 import { supabase, Payment, Property } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+// --- PayPal integration import ---
+import { PayWithPayPal } from './PayWithPayPal';
 
 interface PaymentWithProperty extends Payment {
   properties?: {
@@ -511,6 +513,16 @@ const PaymentCard = ({
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* --- PayPal "Pay Now" Button for pending payments --- */}
+      {payment.status === 'pending' && (
+        <div className="mt-2" onClick={e => e.stopPropagation()}>
+          <PayWithPayPal
+            payment={payment}
+            onPaid={() => onStatusUpdate(payment.id, 'paid', 'paypal')}
+          />
         </div>
       )}
     </div>
