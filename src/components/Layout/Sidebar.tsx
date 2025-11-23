@@ -1,6 +1,7 @@
 import { Home, Wrench, DollarSign, CreditCard, Bell, Megaphone, LogOut, BarChart3, FileText, Menu, X, Building2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 
 interface SidebarProps {
   activeView: string;
@@ -8,9 +9,56 @@ interface SidebarProps {
 }
 
 export const Sidebar = ({ activeView, onViewChange }: SidebarProps) => {
-  const { profile, signOut, isAdmin } = useAuth();
+  const { profile, signOut, isAdmin, user } = useAuth();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (user) {
+      loadUnreadCount();
+      setupRealtimeListener();
+    }
+  }, [user]);
+
+  const loadUnreadCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user?.id)
+        .eq('is_read', false);
+
+      if (error) throw error;
+      setUnreadCount(count || 0);
+    } catch (error) {
+      console.error('Error loading unread count:', error);
+    }
+  };
+
+  const setupRealtimeListener = () => {
+    if (!user) return;
+
+    const subscription = supabase
+      .channel(`notifications:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadUnreadCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  };
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['admin', 'resident'] },
@@ -100,20 +148,37 @@ export const Sidebar = ({ activeView, onViewChange }: SidebarProps) => {
           {visibleItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeView === item.id;
+            const hasNotifications = item.id === 'notifications' && unreadCount > 0;
 
             return (
               <button
                 key={item.id}
                 onClick={() => handleViewChange(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative ${
                   isActive
                     ? 'bg-white text-slate-900 shadow-lg'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 } ${isCollapsed ? 'justify-center' : ''}`}
                 title={isCollapsed ? item.label : ''}
               >
-                <Icon className="h-5 w-5 flex-shrink-0" />
-                {!isCollapsed && <span className="font-medium">{item.label}</span>}
+                <div className="relative">
+                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  {hasNotifications && (
+                    <span className="absolute -top-1 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </div>
+                {!isCollapsed && (
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="font-medium">{item.label}</span>
+                    {hasNotifications && (
+                      <span className="ml-auto bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </div>
+                )}
               </button>
             );
           })}
